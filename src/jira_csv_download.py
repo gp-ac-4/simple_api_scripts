@@ -3,12 +3,16 @@ import os
 import pandas
 import JIRA
 
-def download_ticket_data(username, password, jql, fields=["key", "summary","assignee","created","resolutiondate"], file_name="jira_output.csv", page_size=100):
+def download_ticket_data(username, password, jql, fields=["key", "summary","assignee","created","resolutiondate"], file_name="jira_output.csv", page_size=100, status_callback=None):
     # Connect to Jira
     jira = JIRA(basic_auth=(username, password), server='https://your-jira-instance.atlassian.net')
 
     # Get the total number of issues
     total_issues = jira.search_issues(jql, maxResults=0).total
+    csv_header = True
+
+    if status_callback:
+        status_callback("Found {} issues".format(total_issues))
 
     # Calculate the number of pages based on the page size
     num_pages = (total_issues // page_size) + 1
@@ -26,11 +30,18 @@ def download_ticket_data(username, password, jql, fields=["key", "summary","assi
             data.append(row)
         df = pandas.DataFrame(data)
 
-        # Save each page in a CSV chunk using pandas
-        save_csv_chunk(df, file_name)
+        if status_callback:
+            status_callback("Saving page {} of {}".format(page + 1, num_pages))
 
-def save_csv_chunk(data, filename):
-    data.to_csv(filename, mode='a', index=False, header=False)
+        # Save each page in a CSV chunk using pandas
+        jira_csv_save_csv_chunk(df, file_name, csv_header)
+        csv_header = False
+
+def jira_csv_save_csv_chunk(data, filename, header=True):
+    data.to_csv(filename, mode='a', index=False, header=header)
+
+def jira_csv_status_callback(message):
+    print(" -- " + message)
 
 def main():
     parser = argparse.ArgumentParser()
