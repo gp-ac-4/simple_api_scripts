@@ -5,7 +5,7 @@ import warnings
 import JIRA
 
 
-def download_ticket_data(jql, fields=["key", "summary","assignee","created","resolutiondate"], file_name="jira_output.csv", page_size=100, status_callback=None, jira_connection=None, jira_srver=None, pat=None, localserver=False):
+def download_ticket_data(jql, fields=["key", "summary","assignee","created","resolutiondate"], file_name="jira_output.csv", page_size=100, status_callback=None, jira_connection=None, jira_srver=None, jira_token=None, localserver=False):
     """
     Downloads ticket data from Jira based on the provided JQL query and saves it in a CSV file.
 
@@ -20,29 +20,44 @@ def download_ticket_data(jql, fields=["key", "summary","assignee","created","res
         pat (str, optional): Jira personal access token. Defaults to None.
         localserver (bool, optional): Flag to indicate if running on a local server. Defaults to False.
     """
-    if localserver:
-        options['verify'] = False
-        restore_warning = warnings.showwarning
-        warnings.showwarning = lambda *args, **kwargs: None
+    
 
     if jira_connection is None:
         options = {
             'server': jira_srver,
             'headers': {
-                'Authorization': 'Bearer {}'.format(pat),
+                'Authorization': f'Bearer {jira_token}',
                 'Accept': 'application/json'
             },
         }
 
-        if status_callback:
-            status_callback("Connecting to Jira server {}".format(jira_srver))
+        if localserver:
+            options['verify'] = False
+            restore_warning = warnings.showwarning
+            warnings.showwarning = lambda *args, **kwargs: None
 
-        jira_connection = JIRA(options, max_retries=0)
+        if status_callback:
+            status_callback(f"Connecting to Jira server {jira_srver}")
+
+        try:
+            jira_connection = JIRA(options, max_retries=0)
+        except Exception as ex:
+            if status_callback:
+                status_callback(f"Error connecting to Jira server: {ex}")
+            return
 
     if status_callback:
         status_callback("Searching Jira Issues...")
 
-    issues = jira_connection.search_issues(jql, fields=fields, maxResults=page_size)
+    try:
+        # Execute JQL query with pagination
+        issues = jira_connection.search_issues(jql, fields=fields, maxResults=page_size)
+    except Exception as ex:
+        if status_callback:
+            status_callback(f"Error searching Jira issues: {ex}")
+        return
+
+
     total_issues = issues.total
     if total_issues >0:
         # Calculate the number of pages based on the page size
@@ -63,7 +78,13 @@ def download_ticket_data(jql, fields=["key", "summary","assignee","created","res
     for page in range(1, num_pages):
         # Execute JQL query with pagination
         start_at = page * page_size
-        issues = jira_connection.search_issues(jql, fields=fields, startAt=start_at, maxResults=page_size)
+
+        try:
+            issues = jira_connection.search_issues(jql, fields=fields, startAt=start_at, maxResults=page_size)
+        except Exception as ex:
+            if status_callback:
+                status_callback(f"Error searching Jira issues: {ex}")
+            return
 
         if status_callback:
             status_callback("Saving page {} of {}".format(page + 1, num_pages))
@@ -112,6 +133,7 @@ def main():
     parser.add_argument("--file_name", help="Name of the CSV", default="jira_output.csv")
     parser.add_argument("--page_size", help="Page size for pagination", default=100)
     parser.add_argument("--fields", help="Fields to include in the CSV", default=["key", "summary","assignee","created","description","resolutiondate","status"])
+    parser.add_argument('--localserver', action='store_true', help='Flag to indicate if running on a local server')
     args = parser.parse_args()
 
     # Get the parameters from the command line using argparse
