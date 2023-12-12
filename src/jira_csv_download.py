@@ -3,8 +3,23 @@ import os
 import pandas
 import warnings
 import JIRA
-# jira = JIRA(jira_url, basic_auth=(username, password)
+
+
 def download_ticket_data(jql, fields=["key", "summary","assignee","created","resolutiondate"], file_name="jira_output.csv", page_size=100, status_callback=None, jira_connection=None, jira_srver=None, pat=None, localserver=False):
+    """
+    Downloads ticket data from Jira based on the provided JQL query and saves it in a CSV file.
+
+    Args:
+        jql (str): Jira Query Language (JQL) to search for issues.
+        fields (list, optional): List of fields to include in the CSV. Defaults to ["key", "summary","assignee","created","resolutiondate"].
+        file_name (str, optional): Name of the CSV file to save the data. Defaults to "jira_output.csv".
+        page_size (int, optional): Page size for pagination. Defaults to 100.
+        status_callback (function, optional): Callback function to display status messages. Defaults to None.
+        jira_connection (JIRA, optional): Existing JIRA connection object. Defaults to None.
+        jira_srver (str, optional): Jira server URL. Defaults to None.
+        pat (str, optional): Jira personal access token. Defaults to None.
+        localserver (bool, optional): Flag to indicate if running on a local server. Defaults to False.
+    """
     if localserver:
         options['verify'] = False
         restore_warning = warnings.showwarning
@@ -59,6 +74,15 @@ def download_ticket_data(jql, fields=["key", "summary","assignee","created","res
         warnings.showwarning = restore_warning
 
 def write_issues_to_csv(issues, fields, file_name, csv_header):
+    """
+    Writes the Jira issues data to a CSV file.
+
+    Args:
+        issues (list): List of Jira issues.
+        fields (list): List of fields to include in the CSV.
+        file_name (str): Name of the CSV file.
+        csv_header (bool): Flag to indicate if the CSV file should include a header row.
+    """
     data = []
     for issue in issues:
         row = {field: issue.fields.__dict__.get(field) for field in fields}
@@ -71,6 +95,12 @@ def write_issues_to_csv(issues, fields, file_name, csv_header):
     df.to_csv(file_name, mode='a', index=False, header=csv_header)
 
 def jira_csv_status_callback(message):
+    """
+    Callback function to print status messages.
+
+    Args:
+        message (str): Status message to print.
+    """
     print(" -- " + message)
 
 def main():
