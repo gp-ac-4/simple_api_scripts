@@ -4,7 +4,7 @@ import pandas
 import warnings
 from jira import JIRA
 
-def download_ticket_data(jql, fields=["key", "summary","assignee","created","resolutiondate"], file_name="jira_output.csv", page_size=100, status_callback=None, jira_connection=None, jira_srver=None, jira_token=None, localserver=False, overtwie=True):
+def download_ticket_data(jql, fields=["summary","assignee","created","resolutiondate"], file_name="jira_output.csv", page_size=100, status_callback=None, jira_connection=None, jira_srver=None, jira_token=None, localserver=False, overtwie=True):
     """
     Downloads ticket data from Jira based on the provided JQL query and saves it in a CSV file.
 
@@ -108,9 +108,10 @@ def write_issues_to_csv(issues, fields, file_name, csv_header):
     """
     data = []
     for issue in issues:
+        issueInfo = {"Issue key": issue.key, "Issue id": issue.id}
         row = {field: issue.fields.__dict__.get(field) for field in fields}
-        row['Issue key'] = issue.key
-        row['Issue id'] = issue.id
+        # make sure key and id are the first columns
+        row = {**issueInfo, **row}
         data.append(row)
     df = pandas.DataFrame(data)
     
@@ -134,7 +135,7 @@ def main():
     
     parser.add_argument("--file_name", help="Name of the CSV", default="jira_output.csv")
     parser.add_argument("--page_size", type=int, help="Page size for pagination", default=100)
-    parser.add_argument("--fields", help="Fields to include in the CSV", default=["key", "summary","assignee","created","description","resolutiondate","status"])
+    parser.add_argument("--fields", help="Fields to include in the CSV", default=["summary","assignee","created","description","resolutiondate","status"])
     parser.add_argument('--localserver', action='store_true', help='Flag to indicate a self-signed certificate')
     args = parser.parse_args()
 
