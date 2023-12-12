@@ -2,8 +2,7 @@ import argparse
 import os
 import pandas
 import warnings
-import JIRA
-
+from jira import JIRA
 
 def download_ticket_data(jql, fields=["key", "summary","assignee","created","resolutiondate"], file_name="jira_output.csv", page_size=100, status_callback=None, jira_connection=None, jira_srver=None, jira_token=None, localserver=False):
     """
@@ -131,7 +130,7 @@ def main():
     parser.add_argument('-q', "--jql", help="Jira Query Language (JQL)")
     
     parser.add_argument("--file_name", help="Name of the CSV", default="jira_output.csv")
-    parser.add_argument("--page_size", help="Page size for pagination", default=100)
+    parser.add_argument("--page_size", type=int, help="Page size for pagination", default=100)
     parser.add_argument("--fields", help="Fields to include in the CSV", default=["key", "summary","assignee","created","description","resolutiondate","status"])
     parser.add_argument('--localserver', action='store_true', help='Flag to indicate if running on a local server')
     args = parser.parse_args()
