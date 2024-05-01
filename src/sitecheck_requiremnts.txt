@@ -1,0 +1,4 @@
+requests
+pyOpenSSL
+cryptography
+idna
