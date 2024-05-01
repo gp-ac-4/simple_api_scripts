@@ -1,97 +1,157 @@
 import requests
-import ssl
 import socket
 import argparse
 import sys
-import threading
+from OpenSSL import SSL
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+import concurrent.futures
+from collections import namedtuple
+import idna
+from socket import socket
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning # type: ignore
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
-def get_certificate(host, port=443):
-    context = ssl.create_default_context()
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    conn = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname=host)
-    conn.settimeout(3.0)
-    try:
-        conn.connect((host, port))
-        return conn.getpeercert()
-    except Exception as e:
-        raise Exception(f"Unable to retrieve certificate from {host}:{port}. Error {e}") from e
+HostInfo = namedtuple(field_names='cert hostname peername', typename='HostInfo')
 
-def check_webserver(fqdn, httpTimeout=2):
-    output = []
-    output.append("\n")
-    repeatchar = len(fqdn) + 17
-    divider = "-" * repeatchar
-    output.append(divider)
-    output.append(f"--- Checking {fqdn} ---")
-    output.append(divider)
+def connect_socket(hostname, port):
+    sock = socket()
+    sock.connect((hostname, port))
+    return sock
+
+
+def get_cert(sock, hostname_idna):
+    ctx = SSL.Context(SSL.SSLv23_METHOD) # most compatible
+    ctx.check_hostname = False
+    ctx.verify_mode = SSL.VERIFY_NONE
+
+    sock_ssl = SSL.Connection(ctx, sock)
+    sock_ssl.set_connect_state()
+    sock_ssl.set_tlsext_host_name(hostname_idna)
+    sock_ssl.do_handshake()
+    cert = sock_ssl.get_peer_certificate()
+    crypto_cert = cert.to_cryptography()
+    sock_ssl.close()
+    sock.close()
+
+    return crypto_cert # HostInfo(cert=crypto_cert, peername=peername, hostname=hostname)
+
+
+def check_web_request(fqdn, output, httpTimeout=2):
     try:
         response = requests.get(f"https://{fqdn}", timeout=httpTimeout, verify=False)
-        output.append(f"Webserver found on {fqdn}.")
-        format_header_output(output, response, divider)
-        check_certificate(fqdn, output, divider)
+        output.append(f"Webserver FOUND on {fqdn}.")
+        output.append("\t --HTTP header info--")
+        for key, value in response.headers.items():
+            output.append(f"{key}: {value}")
     except requests.exceptions.Timeout:
-        output.append(f"No webserver found on {fqdn}.")
+        output.append(f"NO WEBSERVER found on {fqdn}.")
+        return False
+    return True
 
-    print('\n'.join(output))
-
-def format_header_output(output, response, divider):
-    output.append("\n")
-    output.append("  HTTP HEADER INFORMATION")
-    output.append(divider)
-    for key, value in response.headers.items():
-        output.append(f"{key}: {value}")
-
-def check_certificate(fqdn, output, divider):
-    output.append("\n")
-    output.append("  CERTIFICATE INFORMATION")
-    output.append(divider)
+def get_issuer(cert):
     try:
-        cert = get_certificate(fqdn)
-        if cert is not None:
-            subject = dict(x[0] for x in cert['subject'])
-            issued_to = subject['commonName']
-            output.append(f"Certificate for {fqdn} issued to {issued_to}:")
-            for key, value in cert.items():
-                output.append(f"{key}: {value}")
-        else:
-            output.append(f"Certificate information for {fqdn} not found.")
+        names = cert.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)
+        return names[0].value
+    except x509.ExtensionNotFound:
+        return ""
+    
+def get_alt_names(cert):
+    try:
+        ext = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+        return ",".join(ext.value.get_values_for_type(x509.DNSName))
+    except x509.ExtensionNotFound:
+        return ""
+    
+def get_common_name(cert):
+    try:
+        names = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+        return names[0].value
+    except x509.ExtensionNotFound:
+        return ""
+    
+def format_basic_info(cert):
+    output = []
+    output.append("Certificate:")
+    output.append("commonName: " + get_common_name(cert))
+    output.append("SAN: " + get_alt_names(cert))
+    output.append("issuer: " + get_issuer(cert))
+    output.append(f"expires: {str(cert.not_valid_after_utc)}")
+    return "\n".join(output)
+
+def check_socket_connect(hostname, port):
+    output = []
+    try:
+        sock = connect_socket(hostname, port)
+        peername = sock.getpeername()
+        output.append(f"Connected to {hostname} on {peername}.")
+
+        cert = get_cert(sock, idna.encode(hostname))
+        basicinfo = format_basic_info(cert)
+        output.append(basicinfo)
 
     except Exception as e:
+            output.append(f"Failed to connect to {hostname}. {e}")
+
+    return "\n".join(output)
+
+def check_web_server(hostname, port):
+    output = []
+    output.append("\n")
+    repeatchar = len(hostname) + 21
+    divider = "-" * repeatchar
+    output.append(divider)
+    output.append(f"--- Checking {hostname}:{port} ---")
+    output.append(divider)
+    # web request
+    if check_web_request(hostname, output):
         output.append(divider)
-        output.append(f"Error retrieving certificate for {fqdn}: {e}")
+        # socket connect
+        output.append(check_socket_connect(hostname, port))
+
+    output.append(divider)
+    output.append(divider)
+    output.append(divider)
+    return "\n".join(output)
 
 def main():
     parser = argparse.ArgumentParser(description='Check a list of FQDNs for webservers.')
     parser.add_argument('-file', help='The file containing the list of FQDNs.')
-    parser.add_argument('-threads', help='Maximum concurrent threads.', type=int, default=5)
+    parser.add_argument('-threads', help='Maximum concurrent threads.', type=int, default=5, choices=range(1, 11))
     parser.add_argument('-timeout', help='Maximum http timeout.', type=int, default=5)
+    parser.add_argument('-output', help='Output file.', default='PRINT')
+    parser.add_argument('-overwrite', help='Overwrite the output file if it already exists.', action='store_true')
+    parser.add_argument('-append', help='Append to the output file if it already exists.', action='store_true')
     args = parser.parse_args()
 
     try:
         with open(args.file, 'r') as f:
-            fqdns = [line.strip() for line in f if line.strip()]
+            hosts = [line.strip() for line in f if line.strip()]
     except FileNotFoundError:
         print(f"File {args.file} not found.")
         sys.exit(1)
-        
- 
-    threads = []
-    for fqdn in fqdns:
-        t = threading.Thread(target=check_webserver, args=(fqdn,))
-        threads.append(t)
-        t.start()
-        # Limit the number of concurrent threads
-        if len(threads) >= args.threads:
-            for t in threads:
-                t.join()
-            threads = []
 
-    for t in threads:
-        t.join()
+    if args.output != 'PRINT':
+        if args.overwrite:
+            with open(args.output, 'w') as f:
+                f.write('')
+        elif not args.append:
+            try:
+                with open(args.output, 'x') as f:
+                    f.write('')
+            except FileExistsError:
+                print(f"File {args.output} already exists. You can use -overwrite or -append to this same name.")
+                sys.exit(1)
 
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.threads) as executor:
+        for certinfo in executor.map(lambda x: check_web_server(x, 443), hosts):
+            if args.output == 'PRINT':
+                print(certinfo)
+            else:
+                with open(args.output, 'a') as f:
+                    f.write(certinfo)
+                    
+# TODO: add support for CSV input and output
 if __name__ == "__main__":
     main()
