@@ -48,6 +48,9 @@ def check_web_request(fqdn, output, httpTimeout=2):
     except requests.exceptions.Timeout:
         output.append(f"NO WEBSERVER found on {fqdn}.")
         return False
+    except Exception as e:
+        output.append(f"Failed to check {fqdn}. {e}")
+        return False
     return True
 
 def get_issuer(cert):
