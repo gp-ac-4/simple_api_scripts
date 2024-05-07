@@ -2,3 +2,4 @@ requests
 pyOpenSSL
 cryptography
 idna
+pandas
