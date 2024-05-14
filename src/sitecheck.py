@@ -90,18 +90,20 @@ def check_socket_connect(hostname, port):
 
 
 
-def check_web_server(hostname, port):
+def check_web_server(hostname, port, data={}, mergedata=False):
 
     connectresult = check_web_request(hostname)
+    if mergedata: connectresult = {**connectresult, **data}
+
     certresult = {} 
     if (connectresult['http_connect'] == 'true'): certresult = check_socket_connect(hostname, port)
 
     return {**connectresult, **certresult}
 
-def chunk_hosts(hostRowCollection):
+def chunk_hosts(hostRowCollection, mergedata=False):
     for index, row in hostRowCollection.iterrows():
         if row.get('port') == None: row['port'] = 443
-        yield check_web_server(row['host'], row['port'])
+        yield check_web_server(row['host'], row['port'], row, mergedata)
 
 def main():
     parser = argparse.ArgumentParser(description='Check a list of hosts for webservers.')
@@ -129,7 +131,7 @@ def main():
     else:
         writeMode = 'a'
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.threads) as executor:
-        for hostresult in executor.map(lambda x: chunk_hosts(x), pandas.read_csv(args.file, chunksize=args.chunksize)):
+        for hostresult in executor.map(lambda x: chunk_hosts(x, args.update), pandas.read_csv(args.file, chunksize=args.chunksize)):
             if args.output == 'PRINT':
                 print(hostresult)
             else:
