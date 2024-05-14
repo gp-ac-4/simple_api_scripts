@@ -2,7 +2,7 @@ import pandas as pd
 import re
 import argparse
 
-def process_csv(input_file_name, output_file_name, field_name, pattern):
+def process_csv(input_file_name, output_file_name, field_name, pattern, output_field_name):
     # Define the regular expression pattern
     pattern = re.compile(pattern)
 
@@ -11,28 +11,28 @@ def process_csv(input_file_name, output_file_name, field_name, pattern):
         return pattern.findall(str(field))
 
     # Define the chunk size
-    chunksize = 10 ** 6
+    chunksize = 10 ** 3
 
-    # Initialize an empty DataFrame for the output
-    df_output = pd.DataFrame()
-
+    csv_header = True
     # Read the input CSV file in chunks
     for chunk in pd.read_csv(input_file_name, chunksize=chunksize):
         # Apply the function to the specified field
-        chunk['matches'] = chunk[field_name].apply(find_matches)
-        # Append the processed chunk to the output DataFrame
-        df_output = pd.concat([df_output, chunk])
-
-    # Write the output DataFrame to the output CSV file
-    df_output.to_csv(output_file_name, index=False)
+        chunk[output_field_name] = chunk[field_name].apply(find_matches)
+        # extract all values from the chunk except the field_name
+        chunk = chunk.drop(field_name, axis=1)
+        chunk = chunk.explode(field_name)
+        # Write the output DataFrame to the output CSV file
+        chunk.to_csv(output_file_name, mode='a', index=False, header=csv_header)
+        csv_header = False
 
 if __name__ == "__main__":
     # Define the command-line arguments
     parser = argparse.ArgumentParser(description='Process a CSV file.')
-    parser.add_argument('-i', '--input_file', help='The name of the input file.')
-    parser.add_argument('-o', '--output_file', help='The name of the output file.')
-    parser.add_argument('-f', '--field_name', help='The name of the field to be searched.')
-    parser.add_argument('-p', '--pattern', help='The regular expression pattern.')
+    parser.add_argument('-i', '--input_file', help='The name of the input file.', defalut='input.csv')
+    parser.add_argument('-o', '--output_file', help='The name of the output file.', defalut='output.csv')
+    parser.add_argument('-o', '--output_field_name', help='The name of the new field.', defalut='matches')
+    parser.add_argument('-f', '--field_name', help='The name of the field to be searched.', defalut='descriptoin')
+    parser.add_argument('-p', '--pattern', help='The regular expression pattern.', defalut='ec2-[\q\-\.]*?\.amazonaws\.com')
     args = parser.parse_args()
 
-    process_csv(args.input_file, args.output_file, args.field_name, args.pattern)
+    process_csv(args.input_file, args.output_file, args.field_name, args.pattern, args.output_field_name)
