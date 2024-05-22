@@ -1,0 +1,9 @@
+cryptography==42.0.5
+idna==3.7
+jira==3.8.0
+pandas==2.2.2
+PyGithub==2.3.0
+pyOpenSSL==24.1.0
+pyOpenSSL==24.1.0
+PyYAML==6.0.1
+Requests==2.32.2
