@@ -29,10 +29,10 @@ if __name__ == "__main__":
     # Define the command-line arguments
     parser = argparse.ArgumentParser(description='Process a CSV file.')
     parser.add_argument('-i', '--input_file', help='The name of the input file.', default='input.csv')
-    parser.add_argument('-o', '--output_file', help='The name of the output file.', defalut='output.csv')
-    parser.add_argument('-n', '--output_field_name', help='The name of the new field.', defalut='matches')
-    parser.add_argument('-f', '--field_name', help='The name of the field to be searched.', defalut='description')
-    parser.add_argument('-p', '--pattern', help='The regular expression pattern.', defalut='ec2-[\w\-\.]*?\.amazonaws\.com')
+    parser.add_argument('-o', '--output_file', help='The name of the output file.', default='output.csv')
+    parser.add_argument('-n', '--output_field_name', help='The name of the new field.', default='matches')
+    parser.add_argument('-f', '--field_name', help='The name of the field to be searched.', default='description')
+    parser.add_argument('-p', '--pattern', help='The regular expression pattern.', default='ec2-[\w\-\.]*?\.amazonaws\.com')
     args = parser.parse_args()
 
     process_csv(args.input_file, args.output_file, args.field_name, args.pattern, args.output_field_name)

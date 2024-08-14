@@ -2,9 +2,10 @@ import argparse
 import os
 import pandas
 import warnings
+import base64
 from jira import JIRA
 
-def download_ticket_data(jql, fields=["summary","assignee","created","resolutiondate"], file_name="jira_output.csv", page_size=100, status_callback=None, jira_connection=None, jira_srver=None, jira_token=None, localserver=False, overtwie=True):
+def download_ticket_data(jql, fields=["summary","assignee","created","resolutiondate"], file_name="jira_output.csv", page_size=100, status_callback=None, jira_connection=None, jira_srver=None, jira_token=None, jira_user=None, localserver=False, overtwie=True):
     """
     Downloads ticket data from Jira based on the provided JQL query and saves it in a CSV file.
 
@@ -22,13 +23,23 @@ def download_ticket_data(jql, fields=["summary","assignee","created","resolution
     
 
     if jira_connection is None:
-        options = {
-            'server': jira_srver,
-            'headers': {
-                'Authorization': f'Bearer {jira_token}',
-                'Accept': 'application/json'
-            },
-        }
+        basicAuth = None
+        if not (jira_user is None or jira_user == "nouser"):
+            basicAuth = (jira_user, jira_token)
+            options = {
+                'server': jira_srver,
+                'headers': {
+                    'Accept': 'application/json'
+                },
+            }
+        else:
+            options = {
+                'server': jira_srver,
+                'headers': {
+                    'Authorization': f'Bearer {jira_token}',
+                    'Accept': 'application/json'
+                },
+            }
 
         if localserver:
             options['verify'] = False
@@ -39,7 +50,7 @@ def download_ticket_data(jql, fields=["summary","assignee","created","resolution
             status_callback(f"Connecting to Jira server {jira_srver}")
 
         try:
-            jira_connection = JIRA(options, max_retries=0)
+            jira_connection = JIRA(options, max_retries=0, basic_auth=basicAuth)
         except Exception as ex:
             if status_callback:
                 status_callback(f"Error connecting to Jira server: {ex}")
@@ -71,6 +82,7 @@ def download_ticket_data(jql, fields=["summary","assignee","created","resolution
         status_callback("Saving page {} of {}".format(1, num_pages))
 
     if overtwie and os.path.isfile(file_name):
+        status_callback("Overwriting {file_name}")
         os.remove(file_name)
 
     # Extract data and convert to DataFrame
@@ -127,22 +139,40 @@ def jira_csv_status_callback(message):
     """
     print(" -- " + message)
 
+def is_base64(s):
+    try:
+        return base64.b64encode(base64.b64decode(s)).decode() == s
+    except Exception:
+        return False
+
+def MaybeBase64(s):
+    try:
+        if is_base64(s):
+            return base64.b64decode(s)
+        else:
+            return s
+    except Exception:
+        return s
+    
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', "--jira_server", help="Jira server URL")
     parser.add_argument('-t', "--jira_token", help="Jira personal access token")
-    parser.add_argument('-q', "--jql", help="Jira Query Language (JQL)")
+    parser.add_argument('-q', "--jql", help="Jira Query Language (JQL). can be encoded in Base64 or enclosed in double quotes with single quotes in the query")
     
+    parser.add_argument('-u', "--jira_user", help="Jira user if using Jira Cloud basic auth", default="nouser")
+
     parser.add_argument("--file_name", help="Name of the CSV", default="jira_output.csv")
     parser.add_argument("--page_size", type=int, help="Page size for pagination", default=100)
-    parser.add_argument("--fields", help="Fields to include in the CSV", default=["summary","assignee","created","description","resolutiondate","status"])
+    parser.add_argument("--fields", help="Fields to include in the CSV", default=["summary","assignee","created","description","status"])
     parser.add_argument('--localserver', action='store_true', help='Flag to indicate a self-signed certificate')
+    parser.add_argument('--overwrite', action='store_true', help='Flag to indicate output file should be overwritten')
     args = parser.parse_args()
 
     # Get the parameters from the command line using argparse
     jira_server = args.jira_server or os.environ.get("JIRA_SERVER")
     jira_token = args.jira_token or os.environ.get("JIRA_TOKEN")
-
+    jql = MaybeBase64(args.jql)
 
     if not jira_server:
         print("Jira server must be specified via parameter or JIRA_SERVER environment variable")
@@ -154,23 +184,24 @@ def main():
         parser.print_help()
         return
     
-    if os.path.isfile(args.file_name):
+    if os.path.isfile(args.file_name) and args.overwrite:
         os.remove(args.file_name)
+
+
+    print("Downloading ticket data to {args.file_name}")
 
     # Call the method to download ticket data from Jira and save it in a CSV
     download_ticket_data(
-        args.jql,
+        jql,
         args.fields,
         args.file_name,
         args.page_size,
         jira_srver=jira_server,
         jira_token=jira_token,
+        jira_user=args.jira_user,
         localserver=args.localserver,
-        status_callback=jira_csv_status_callback
+        status_callback=jira_csv_status_callback,
     )
 
 if __name__ == "__main__":
     main()
-
-
-
