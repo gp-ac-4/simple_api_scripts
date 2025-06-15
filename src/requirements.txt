@@ -4,4 +4,4 @@ jira==3.8.0
 pandas==2.2.2
 pyOpenSSL==24.1.0
 pyOpenSSL==24.1.0
-Requests==2.31.0
+Requests==2.32.4
