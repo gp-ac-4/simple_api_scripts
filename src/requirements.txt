@@ -1,4 +1,4 @@
-cryptography==42.0.7
+cryptography==46.0.5
 idna==3.7
 jira==3.8.0
 pandas==2.2.2
